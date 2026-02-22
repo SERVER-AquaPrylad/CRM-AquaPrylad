@@ -254,13 +254,17 @@ function iCheckIP($status, $user_ip, $user_agent, $user_country, $user_city, $us
         exit();
     }
 
+    if ($user_country === 'UNKNOWN' || empty($user_country)) {
+        $user_country = 'Ukraine';
+    }
+
     if ($user_country !== 'Ukraine') {
-        $query = "INSERT INTO blocked_IPs (ip1, ip2, ip3, ip4, user_agent, country, city, block_reason, description) 
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $mysqli->prepare($query);
-        $stmt->bind_param("iiiisssss", $ip1, $ip2, $ip3, $ip4, $user_agent, $user_country, $user_city, $block_reason, $description);
-        $stmt->execute();
-        $stmt->close();
+        // $query = "INSERT INTO blocked_IPs (ip1, ip2, ip3, ip4, user_agent, country, city, block_reason, description) 
+        //           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        // $stmt = $mysqli->prepare($query);
+        // $stmt->bind_param("iiiisssss", $ip1, $ip2, $ip3, $ip4, $user_agent, $user_country, $user_city, $block_reason, $description);
+        // $stmt->execute();
+        // $stmt->close();
 
         logger("system", $page, "[WARN]", $log_message);
         // telegram_BOT($tg_message_blocked);

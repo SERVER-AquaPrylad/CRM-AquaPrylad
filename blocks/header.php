@@ -85,7 +85,7 @@
     $allowed_pages = explode('|', $_SESSION['pages']);
     
     // Перевірка прав доступу до даної сторінка користувачем.
-    if (in_array($page, $allowed_pages) || $page = 'MAIN') {
+    if (in_array($page, $allowed_pages) || $page === 'MAIN') {
         ?>
         <!doctype html>
         <html lang="uk">
