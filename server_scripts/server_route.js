@@ -10,6 +10,21 @@ const logger_database = log4js.getLogger("DataBase");
 async function Route_chernigiv(criteria) {
     let con;
     try {
+        const normalizeNullableString = (value) => {
+            if (typeof value !== 'string') return null;
+            const normalized = value.trim();
+            if (!normalized || normalized === 'undefined' || normalized === 'null') {
+                return null;
+            }
+            return normalized;
+        };
+
+        const normalizeDateString = (value) => {
+            const normalized = normalizeNullableString(value);
+            if (!normalized) return null;
+            return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+        };
+
         let statusOrder = [];
         try {
             const data = await fs.readFile('vocabulary.json', 'utf-8');
@@ -90,34 +105,54 @@ async function Route_chernigiv(criteria) {
             ORDER BY t.ID DESC
             LIMIT 100`;
 
-        const queryPersonalTasks = (brigade, excludeDate) => `
-            SELECT t.ID, t.tasks_type, t.note,
-                CONCAT(sb.type, " ", sb.name, ", буд. ", a.adr_building, 
-                        IFNULL(CONCAT(", корп. ", a.adr_building2), ""), 
-                        IFNULL(CONCAT(", кв. ", a.adr_fl_of), "")) AS address,
-                LENGTH(t.meters_id) - LENGTH(REPLACE(t.meters_id, '|', '')) + 1 AS meters,
-                CONVERT_TZ(t.work_date, '+00:00', @@session.time_zone) as work_date
-            FROM tasks t
-            LEFT JOIN addresses a ON t.address_id = a.ID
-            LEFT JOIN street_base sb ON a.adr_street_id = sb.ID
-            WHERE t.brigade = '${brigade}'
-            AND (t.work_date != '${excludeDate}' OR t.work_date IS NULL)
-            ORDER BY t.ID DESC
-            LIMIT 100`;
+        const queryPersonalTasks = (brigade, excludeDate) => {
+            let sql = `
+                SELECT t.ID, t.tasks_type, t.note,
+                    CONCAT(sb.type, " ", sb.name, ", буд. ", a.adr_building, 
+                            IFNULL(CONCAT(", корп. ", a.adr_building2), ""), 
+                            IFNULL(CONCAT(", кв. ", a.adr_fl_of), "")) AS address,
+                    LENGTH(t.meters_id) - LENGTH(REPLACE(t.meters_id, '|', '')) + 1 AS meters,
+                    CONVERT_TZ(t.work_date, '+00:00', @@session.time_zone) as work_date
+                FROM tasks t
+                LEFT JOIN addresses a ON t.address_id = a.ID
+                LEFT JOIN street_base sb ON a.adr_street_id = sb.ID
+                WHERE t.brigade = ?
+            `;
+            const params = [brigade];
 
-        const queryDateTasks = (brigade, workDate) => `
-            SELECT t.ID, t.tasks_type, t.note,
-                   CONCAT(sb.type, " ", sb.name, ", буд. ", a.adr_building, 
-                          IFNULL(CONCAT(", корп. ", a.adr_building2), ""), 
-                          IFNULL(CONCAT(", кв. ", a.adr_fl_of), "")) AS address,
-                   LENGTH(t.meters_id) - LENGTH(REPLACE(t.meters_id, '|', '')) + 1 AS meters,
-                   CONVERT_TZ(t.work_date, '+00:00', @@session.time_zone) as work_date
-            FROM tasks t
-            LEFT JOIN addresses a ON t.address_id = a.ID
-            LEFT JOIN street_base sb ON a.adr_street_id = sb.ID
-            WHERE t.brigade = '${brigade}' AND t.work_date = '${workDate}'
-            ORDER BY t.ID DESC
-            LIMIT 100`;
+            if (excludeDate) {
+                sql += ` AND (t.work_date != ? OR t.work_date IS NULL)`;
+                params.push(excludeDate);
+            }
+
+            sql += `
+                ORDER BY t.ID DESC
+                LIMIT 100
+            `;
+
+            return { sql, params };
+        };
+
+        const queryDateTasks = (brigade, workDate) => {
+            if (!workDate) return null;
+            return {
+                sql: `
+                    SELECT t.ID, t.tasks_type, t.note,
+                           CONCAT(sb.type, " ", sb.name, ", буд. ", a.adr_building, 
+                                  IFNULL(CONCAT(", корп. ", a.adr_building2), ""), 
+                                  IFNULL(CONCAT(", кв. ", a.adr_fl_of), "")) AS address,
+                           LENGTH(t.meters_id) - LENGTH(REPLACE(t.meters_id, '|', '')) + 1 AS meters,
+                           CONVERT_TZ(t.work_date, '+00:00', @@session.time_zone) as work_date
+                    FROM tasks t
+                    LEFT JOIN addresses a ON t.address_id = a.ID
+                    LEFT JOIN street_base sb ON a.adr_street_id = sb.ID
+                    WHERE t.brigade = ? AND t.work_date = ?
+                    ORDER BY t.ID DESC
+                    LIMIT 100
+                `,
+                params: [brigade, workDate]
+            };
+        };
 
         const sortTasks = (tasks, taskType) => {
             if (statusOrder.length > 0) {
@@ -191,9 +226,20 @@ async function Route_chernigiv(criteria) {
         };
 
         if (worker) {
-            const { brigade, select_date: SelectDate } = worker;
-            [personalTasks] = await con.query(queryPersonalTasks(brigade, SelectDate));
-            [dateTasks] = await con.query(queryDateTasks(brigade, SelectDate));
+            const brigade = normalizeNullableString(worker.brigade);
+            const SelectDate = normalizeDateString(worker.select_date);
+
+            if (!brigade) {
+                return responseData;
+            }
+
+            const personalQuery = queryPersonalTasks(brigade, SelectDate);
+            [personalTasks] = await con.query(personalQuery.sql, personalQuery.params);
+
+            const dateQuery = queryDateTasks(brigade, SelectDate);
+            if (dateQuery) {
+                [dateTasks] = await con.query(dateQuery.sql, dateQuery.params);
+            }
             personalTasks = sortTasks(personalTasks, 'personal');
             dateTasks = sortTasks(dateTasks, 'date');
 

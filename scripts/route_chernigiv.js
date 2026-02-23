@@ -183,14 +183,19 @@ async function addWorkerButtons() {
 }
 
 function WorkerServerRequest(event) {
-    handleBlockClick(event);
+    const workerButton = event?.currentTarget || event?.target?.closest?.('.route-worker-button');
+    if (!workerButton) return;
+
+    handleBlockClick({ currentTarget: workerButton });
     document.getElementById('route-personal-content').style.display = 'flex';
-    const worker = event.target.textContent;
+    const worker = workerButton.textContent?.trim();
+    if (!worker) return;
     const currentDateBlock = document.getElementById('current-date-block');
     let SelectDate;
     if (currentDateBlock) {
         SelectDate = currentDateBlock.getAttribute('data-curr-work-date');
-    } else {
+    }
+    if (!SelectDate) {
         const today = new Date();
         SelectDate = today.toISOString().split('T')[0];
     }
@@ -429,6 +434,15 @@ function handleDrop(event, targetContainerId) {
         worker = activeWorkerButton.textContent;
     }
 
+    if ((targetContainerId === 'route-personal-content' || targetContainerId === 'route-date-bar') && !worker) {
+        showAnimation('cancel', null, animation_time/1000);
+        setTimeout(() => {
+            hideAnimation();
+            showModalMessage('no-worker-selected', 'alert', 'Для перенесення заявки в маршрут<br>необхідно обрати виконавця.', TaskDateErrorShowTime);
+        }, animation_time);
+        return;
+    }
+
     const currentWorkDate = currentDateBlock ? currentDateBlock.getAttribute('data-curr-work-date') : null;
     const today = new Date().toISOString().split('T')[0];
     let change = {
@@ -529,7 +543,7 @@ function RouteCreation(calendarDates) {
 
     let calendarDiv = document.getElementById('route-calendar');
     let currentDateBlock = document.getElementById('current-date-block');
-    let statisticBlock = document.getElementById('current-date-block');
+    let statisticBlock = document.getElementById('statistic-block');
 
     let currentWorkDate = new Date();
 
