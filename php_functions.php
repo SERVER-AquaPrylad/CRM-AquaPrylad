@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
 }
 
 function GetUserInfo() {
-    $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'UNDERFINED';
+    $ip = getRealClientIP();
     $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : 'UNDERFINED';
 
     $userinfoText = "---> User IP: " . $ip . PHP_EOL .
@@ -114,6 +114,19 @@ function GetIpInfo($ip) {
     return ['status' => 'fail', 'message' => 'Unexpected response'];
 }
 
+function getRealClientIP() {
+    if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+        return trim($_SERVER['HTTP_CF_CONNECTING_IP']);
+    }
+
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        return trim($ips[0]);
+    }
+
+    return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+}
+
 function iCheckIP($status, $user_ip, $user_agent, $user_country, $user_city, $user_info, $page) {
     $block_reason = '';
     $description = 'Спроба авторизації CRM - H2O CONTROL';
@@ -174,6 +187,11 @@ function iCheckIP($status, $user_ip, $user_agent, $user_country, $user_city, $us
         exit();
     }
     $stmt->close();
+
+    if (!filter_var($user_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        header("Location: ../auth.php");
+        exit();
+    }
 
     list($ip1, $ip2, $ip3, $ip4) = array_map('intval', explode('.', $user_ip));
     $is_blocked = false;
